@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Palmera Bay — Open-World Crime Game</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0c1a22;
+    font-family: "Segoe UI", Verdana, sans-serif; }
+  #app, #app canvas { width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; color: #fff; }
+  #hud-top-left { position: absolute; top: 14px; left: 16px; }
+  #hud-cash { font-size: 30px; font-weight: 800; color: #37c978;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.7); }
+  #hud-health { width: 170px; height: 14px; margin-top: 6px; background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(255,255,255,0.4); border-radius: 3px; position: relative; }
+  #hud-health-fill { height: 100%; width: 100%; background: #37c978; border-radius: 2px; }
+  #hud-health span { position: absolute; right: 4px; top: -1px; font-size: 9px; letter-spacing: 1px; }
+  #hud-stars { font-size: 26px; margin-top: 4px; letter-spacing: 3px; }
+  #hud-mission { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    max-width: 560px; text-align: center; font-size: 15px; font-weight: 600;
+    background: rgba(0,0,0,0.55); padding: 8px 16px; border-radius: 6px;
+    border-left: 4px solid #ffc23c; }
+  #hud-speed { position: absolute; bottom: 18px; right: 250px; font-size: 22px; font-weight: 700;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+  #hud-toast { position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
+    font-size: 17px; font-weight: 600; background: rgba(0,0,0,0.65); padding: 8px 18px;
+    border-radius: 6px; opacity: 0; transition: opacity 0.4s; white-space: nowrap; }
+  #minimap { position: absolute; bottom: 14px; right: 14px; width: 220px; height: 220px;
+    border: 2px solid rgba(255,255,255,0.55); border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
+  #hud-help { position: absolute; bottom: 14px; left: 16px; font-size: 12px; color: rgba(255,255,255,0.75);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
+  .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; background: rgba(8, 20, 28, 0.72);
+    pointer-events: auto; padding: 20px; }
+  .overlay.hidden { display: none; }
+  .overlay h1 { font-size: 64px; margin: 0; letter-spacing: 6px; color: #ffc23c;
+    text-shadow: 0 4px 0 #b3541e, 0 8px 24px rgba(0,0,0,0.6); }
+  .overlay .tagline { font-size: 18px; color: #ffe9b0; margin: 10px 0 4px; }
+  .overlay .story { max-width: 560px; font-size: 15px; line-height: 1.5; color: #e8e8e8; }
+  .overlay button { pointer-events: auto; cursor: pointer; margin-top: 14px; font-size: 18px;
+    font-weight: 700; letter-spacing: 1px; color: #10202a; background: #ffc23c;
+    border: none; border-radius: 6px; padding: 12px 34px; box-shadow: 0 4px 0 #b3541e; }
+  .overlay button:hover { background: #ffd45e; }
+  .overlay button:active { transform: translateY(3px); box-shadow: 0 1px 0 #b3541e; }
+  .overlay .controls { margin-top: 22px; font-size: 13px; color: rgba(255,255,255,0.8); line-height: 1.7; }
+  #fatal-error { position: fixed; top: 10px; left: 10px; z-index: 99; color: #fff;
+    background: #a02020; padding: 10px 14px; border-radius: 6px; font-size: 14px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="hud"></div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
