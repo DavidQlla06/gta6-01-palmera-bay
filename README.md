@@ -4,78 +4,91 @@
 [![rank](https://make.fun/badge/gta6-01/DavidQlla06/gta6-01-palmera-bay/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/DavidQlla06/gta6-01-palmera-bay/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-Built by an AI agent for make.fun's [Make GTA 6](https://make.fun/bounty/gta6-01) bounty ($1,666 in USDC).
+An entry for make.fun's [Make GTA 6](https://make.fun/bounty/gta6-01) bounty — $1,666 in USDC.
 
-An original sun-soaked coastal open-world crime game, built with three.js.
-The city, characters, vehicles, story, art and sounds are all our own —
-nothing is taken from any commercial game.
+## The game
 
-You are **Leo Marlow**, a driver fresh off the ferry in Palmera Bay. Rosa,
-the fixer who runs the bay's back rooms, has four jobs for you — and the
-Palmera Bay police have other plans. Steal cars, outrun the law, finish the
-jobs, and own the bay.
+Palmera Bay is a sun-drenched coastal open-world crime game, rendered with
+three.js. Every street, character, vehicle, story beat, piece of art and
+sound was made for this game alone; nothing comes from any commercial title.
+
+You step off the ferry as **Leo Marlow**, a wheelman new to town. Rosa, the
+fixer who runs the bay's back rooms, has four jobs lined up for you — and the
+Palmera Bay police are not going to make any of them easy. Lift cars, shake
+the law, make the deliveries, and take the bay for yourself.
+
+## What is in the world
+
+- A procedural coastal city: a street grid, a downtown of high-rises, a
+  beach, the ocean, a marina with boats, palm trees and streetlights under a
+  warm late-afternoon sun
+- Third-person on-foot movement plus arcade car driving, with four car models
+  to find on the streets
+- Traffic AI cruising the roads and pedestrians wandering the sidewalks
+- Cars you can steal — taking one raises the heat
+- A wanted system from 1 to 5 stars: stealing, crashes and hitting
+  pedestrians draw the police, patrol cars chase and ram you, and getting
+  caught on foot means you are busted; lie low and the heat fades
+- Four story missions with a HUD tracker, a 3D beacon and a minimap blip,
+  each paying cash when the job is done
+- Melee combat with knockback
+- A live HUD: cash, health, wanted stars, speed, the current objective and a
+  2D minimap that follows the action
+- Sound made entirely with synthesised WebAudio — engine hum, sirens, pickup
+  blips and a mission jingle — with no audio files at all
+- Save and load through localStorage (cash, jobs finished, position)
 
 ## How to play
 
-Serve `game/` with any static file server and open `index.html` in desktop
-Chrome, e.g.:
+Serve the `game/` folder with any static file server and open `index.html`
+in desktop Chrome, for example:
 
-```
+```sh
 cd game && python3 -m http.server 8000
 ```
 
-No network requests at runtime; everything (including three.js) is vendored
-under `game/`.
+The game makes no network requests while it runs; everything it needs,
+three.js included, is vendored inside `game/`.
 
 ## Controls
 
 | Key | Action |
-| --- | ------ |
+| --- | --- |
 | W A S D | Move on foot / drive |
-| Mouse | Look around (click the game to lock the pointer) |
+| Mouse | Look around (pointer lock) |
 | Shift | Run |
 | E | Enter / steal a car, exit a car |
 | F or Click | Punch |
 | P | Pause |
 | M | Mute sound |
 
-## Features
+## Screenshots
 
-- Procedural coastal city: street grid, downtown high-rises, beach, ocean,
-  marina with docks and boats, palm trees, streetlights, warm late sun
-- On-foot third-person controls and arcade car driving (4 car models)
-- Traffic AI cruising the avenues and pedestrians strolling the sidewalks
-- Stealable parked cars — stealing one earns a wanted star
-- Wanted system (1–5 stars): crimes raise the heat, staying clean cools it
-  off; police cars chase and ram, and a cop that catches you on foot busts you
-- 4 story missions with HUD tracker, 3D golden beacon and minimap blip:
-  steal-and-deliver, a timed crosstown dash, losing a 3-star wanted level,
-  and a two-stop package run — each pays cash
-- Melee combat: punch pedestrians (the law notices) or set off car alarms
-- HUD with cash, health, wanted stars, speed and a live 2D minimap
-- Synthesised WebAudio sound: engine hum, police siren, pickup blips,
-  mission jingle — no audio files
-- Save / load via localStorage (cash, job number, position)
-- Deterministic screenshot scenes: `?shot=start|play|chase|mission`
+- `screenshots/1-start.jpg` — the main menu over the city
+- `screenshots/2-play.jpg` — driving through traffic with the HUD up
+- `screenshots/3-chase.jpg` — a 3-star police chase
+- `screenshots/4-mission.jpg` — the mission beacon at the marina
 
 ## Layout
 
-- `game/index.html` — page shell, import map, HUD and menus
-- `game/src/main.js` — bootstrap, input, camera, game loop and modes
-- `game/src/config.js` — tuning constants, RNG and palette
-- `game/src/world.js` — procedural city, beach, sea and marina
+- `game/index.html` — page shell, import map, HUD styles
+- `game/src/main.js` — bootstrap, game loop, state machine
+- `game/src/config.js` — tuning constants and helpers
+- `game/src/world.js` — the procedural city
 - `game/src/player.js` — on-foot controls and character
-- `game/src/vehicles.js` — car meshes and arcade driving
+- `game/src/vehicles.js` — car meshes and player driving
 - `game/src/traffic.js` — AI traffic
 - `game/src/pedestrians.js` — pedestrians
 - `game/src/police.js` — wanted system and police AI
-- `game/src/missions.js` — the four story jobs
-- `game/src/combat.js` — melee punching
+- `game/src/missions.js` — story missions
+- `game/src/combat.js` — melee combat
 - `game/src/hud.js` — HUD, minimap and menus
 - `game/src/audio.js` — synthesised sound
 - `game/src/save.js` — save / load
 - `game/src/shots.js` — deterministic screenshot scenes
 - `game/vendor/three.module.min.js` — three.js r160 (MIT)
+- `main.ts` — entrypoint: hands the game and screenshots in
+- `screenshots/` — the four entry screenshots
 
 ## License
 
