@@ -1,117 +1,123 @@
-// Palmera Bay — police and the wanted system.
-// One job: wanted stars 1-5, police cars that spawn, chase and ram, wanted
-// decay when the player stays hidden, and the busted outcome.
+// Palmera Bay — wanted level and police.
+// Crimes raise the heat; the heat fades when the player stays clean.
+// Cop cars spawn on the roads, chase the player, and ram the player's
+// car. A cop that reaches the player on foot ends the run: busted.
+
 import * as THREE from 'three';
-import { CONFIG, clamp, makeRng, pick } from './config.js';
-import { Car } from './vehicles.js';
+import { CFG, clamp, angleDelta } from './config.js';
+import { makeCar, MODELS } from './vehicles.js';
+import { resolveCollision } from './world.js';
 
-export class Police {
-  constructor(scene, world) {
-    this.scene = scene;
-    this.world = world;
-    this.wanted = 0;
-    this.cleanTimer = 0;   // seconds without a crime
-    this.cops = [];
-    this.sirenPhase = 0;
-    this.rng = makeRng(CONFIG.WORLD_SEED + 99);
+export function addHeat(g, stars, reason) {
+  if (g.shotMode) return;
+  g.wanted = clamp(g.wanted + stars, 0, CFG.maxWanted);
+  g.heatTimer = CFG.wantedDecaySeconds;
+  if (stars > 0) {
+    g.hud.toast(`WANTED ★${'★'.repeat(g.wanted - 1)} — ${reason}`, 3);
+    g.audio.blip(220, 0.15, 0.1);
   }
+}
 
-  /** Raise the wanted level (capped at 5) and reset the clean timer. */
-  addWanted(stars) {
-    this.wanted = clamp(this.wanted + stars, 0, CONFIG.WANTED_MAX);
-    this.cleanTimer = 0;
+export function setWanted(g, stars) {
+  g.wanted = clamp(stars, 0, CFG.maxWanted);
+  g.heatTimer = CFG.wantedDecaySeconds;
+}
+
+export function spawnCopNear(g, x, z, angle) {
+  const car = makeCar(g, MODELS[1], 0xf2f2f2, x, z, angle, { cop: true });
+  // Blue doors: repaint the body panels via a second box overlay.
+  const stripe = new THREE.Mesh(
+    new THREE.BoxGeometry(2.04, 0.5, 4.2),
+    new THREE.MeshLambertMaterial({ color: 0x1c4fd6 }),
+  );
+  stripe.position.y = 0.62;
+  car.mesh.add(stripe);
+  car.speed = 0;
+  car.catchTimer = 0;
+  g.cops.push(car);
+  return car;
+}
+
+export function removeAllCops(g) {
+  for (const cop of g.cops) {
+    g.scene.remove(cop.mesh);
+    const i = g.cars.indexOf(cop);
+    if (i >= 0) g.cars.splice(i, 1);
   }
+  g.cops = [];
+}
 
-  setWanted(stars) {
-    this.wanted = clamp(stars, 0, CONFIG.WANTED_MAX);
-    this.cleanTimer = 0;
-  }
-
-  clearWanted() {
-    this.wanted = 0;
-    this.cleanTimer = 0;
-    this.removeAllCops();
-  }
-
-  wantedCount() {
-    // One cop per star, up to the cap.
-    return Math.min(this.wanted, CONFIG.COP_MAX);
-  }
-
-  spawnCopNear(x, z) {
-    const angle = this.rng() * Math.PI * 2;
-    const sx = x + Math.cos(angle) * CONFIG.COP_SPAWN_DISTANCE;
-    const sz = z + Math.sin(angle) * CONFIG.COP_SPAWN_DISTANCE;
-    const cx = clamp(sx, -CONFIG.CITY_HALF, CONFIG.BEACH_X);
-    const cz = clamp(sz, -CONFIG.CITY_HALF, CONFIG.CITY_HALF);
-    const cop = new Car(this.scene, cx, cz, 0, 1, 0xf0f0f0, true);
-    cop.parked = false;
-    cop.speed = 0;
-    this.cops.push(cop);
-    return cop;
-  }
-
-  removeAllCops() {
-    for (const cop of this.cops) this.scene.remove(cop.mesh);
-    this.cops = [];
-  }
-
-  update(dt, playerPos, playerInCar, onBusted, onRam) {
-    this.sirenPhase += dt * 6;
-    // Spawn cops to match the wanted level.
-    const want = this.wantedCount();
-    while (this.cops.length < want) this.spawnCopNear(playerPos.x, playerPos.z);
-    while (this.cops.length > want) {
-      const cop = this.cops.pop();
-      this.scene.remove(cop.mesh);
+function nearestRoadPoint(g, x, z) {
+  // Snap to the closest road centre-line, for spawning cops on asphalt.
+  let best = { x, z, d: Infinity };
+  for (const r of g.roadLines) {
+    if (r.axis === 'x') {
+      const d = Math.abs(z - r.at);
+      if (d < best.d) best = { x, z: r.at, d };
+    } else {
+      const d = Math.abs(x - r.at);
+      if (d < best.d) best = { x: r.at, z, d };
     }
-    // Decay: stay clean and the heat drops one star at a time.
-    if (this.wanted > 0) {
-      this.cleanTimer += dt;
-      if (this.cleanTimer > CONFIG.WANTED_DECAY_SECONDS) {
-        this.wanted -= 1;
-        this.cleanTimer = 0;
-      }
+  }
+  return best;
+}
+
+export function updatePolice(g, dt) {
+  // Wanted decay: stay clean and the heat fades, one star at a time.
+  if (g.wanted > 0 && !g.shotMode) {
+    g.heatTimer -= dt;
+    if (g.heatTimer <= 0) {
+      g.wanted -= 1;
+      g.heatTimer = CFG.wantedDecaySeconds;
+      if (g.wanted === 0) g.hud.toast('You lost the cops. Heat is off.', 3);
     }
-    // Chase: steer toward the player, ram when close.
-    for (const cop of this.cops) {
-      const dx = playerPos.x - cop.pos.x;
-      const dz = playerPos.z - cop.pos.z;
-      const dist = Math.hypot(dx, dz);
-      const targetAngle = Math.atan2(dx, dz);
-      let diff = targetAngle - cop.angle;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      cop.angle += clamp(diff, -2.2 * dt, 2.2 * dt);
-      const speed = dist > 60 ? CONFIG.COP_SPEED : CONFIG.COP_SPEED * 0.85;
-      cop.speed = speed;
-      const nx = cop.pos.x + Math.sin(cop.angle) * cop.speed * dt;
-      const nz = cop.pos.z + Math.cos(cop.angle) * cop.speed * dt;
-      if (!this.world.isBlocked(nx, nz, 2.2)) {
-        cop.pos.x = nx;
-        cop.pos.z = nz;
-      } else {
-        cop.angle += Math.PI / 2 * dt * 4; // slide along the wall
+  }
+  // Keep the cop count matched to the wanted level.
+  const want = g.wanted === 0 ? 0 : 1 + g.wanted;
+  while (g.cops.length < want) {
+    const p = nearestRoadPoint(g, g.player.pos.x, g.player.pos.z);
+    const a = Math.random() * Math.PI * 2;
+    spawnCopNear(g, p.x + Math.cos(a) * 34, p.z + Math.sin(a) * 34, a);
+  }
+  while (g.cops.length > want) {
+    const cop = g.cops.pop();
+    g.scene.remove(cop.mesh);
+    const i = g.cars.indexOf(cop);
+    if (i >= 0) g.cars.splice(i, 1);
+  }
+
+  const target = g.inCar ? g.inCar.pos : g.player.pos;
+  for (const cop of g.cops) {
+    const dx = target.x - cop.pos.x;
+    const dz = target.z - cop.pos.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    const wantAngle = Math.atan2(dx, dz);
+    const turn = clamp(angleDelta(cop.angle, wantAngle), -2.6 * dt, 2.6 * dt);
+    cop.angle += turn;
+    const targetSpeed = dist > 60 ? CFG.copTopSpeed : CFG.copTopSpeed * 0.86;
+    cop.speed += clamp(targetSpeed - cop.speed, -20 * dt, 12 * dt);
+    cop.pos.x += Math.sin(cop.angle) * cop.speed * dt;
+    cop.pos.z += Math.cos(cop.angle) * cop.speed * dt;
+    resolveCollision(cop.pos, 1.6, g.colliders);
+    cop.mesh.position.copy(cop.pos);
+    cop.mesh.rotation.y = cop.angle;
+    // Ram: shove the player's car and shake the camera a little.
+    if (g.inCar && dist < 3.4) {
+      g.inCar.pos.x += (dx / dist) * -2.2 * dt * 10;
+      g.inCar.pos.z += (dz / dist) * -2.2 * dt * 10;
+      g.inCar.speed *= 0.94;
+      g.shake = Math.max(g.shake, 0.35);
+      if (g.audio) g.audio.thud();
+    }
+    // Busted: a cop catches the player on foot.
+    if (!g.inCar && dist < 2.6) {
+      cop.catchTimer += dt;
+      if (cop.catchTimer > 1.6) {
+        g.busted();
+        return;
       }
-      cop.syncMesh();
-      // Flashing light bar: red on one side, blue on the other, alternating.
-      const flashOn = Math.sin(this.sirenPhase) > 0;
-      cop.mesh.children.forEach((child) => {
-        if (!child.material || !child.material.color) return;
-        if (child.position.y > 1.5 && child.geometry.type === 'BoxGeometry') {
-          const isRedSide = child.position.z < 0;
-          const lit = isRedSide ? flashOn : !flashOn;
-          child.material.color.setHex(isRedSide ? (lit ? 0xff2020 : 0x550000) : (lit ? 0x2040ff : 0x000055));
-        }
-      });
-      // Ram: damage + push the player's car; touch an on-foot player = busted.
-      if (dist < 3.2) {
-        if (playerInCar) {
-          if (onRam) onRam(cop);
-        } else if (dist < CONFIG.BUST_DISTANCE) {
-          if (onBusted) onBusted();
-        }
-      }
+    } else {
+      cop.catchTimer = 0;
     }
   }
 }
