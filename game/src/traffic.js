@@ -1,54 +1,61 @@
-// Palmera Bay — traffic.
-// One job: AI cars that cruise the road grid in loops, stop for nothing,
-// and swerve around nothing — simple, readable, always moving.
-import * as THREE from 'three';
-import { CONFIG, makeRng, pick } from './config.js';
-import { Car, CAR_COLORS } from './vehicles.js';
+// Palmera Bay — AI traffic.
+// Cars cruise the avenues in lanes, wrap around the map edges, and slow
+// down when another car is right ahead of them. No pathfinding needed:
+// each car owns one straight road and one direction.
 
-export class Traffic {
-  constructor(scene, world) {
-    this.world = world;
-    this.cars = [];
-    const rng = makeRng(CONFIG.WORLD_SEED + 21);
-    const roads = world.roadCentres;
-    for (let i = 0; i < CONFIG.TRAFFIC_COUNT; i += 1) {
-      const vertical = rng() > 0.5;
-      const road = pick(rng, roads);
-      const lane = (rng() > 0.5 ? 3 : -3);
-      const along = (rng() * 2 - 1) * 160;
-      const x = vertical ? road + lane : along;
-      const z = vertical ? along : road + lane;
-      const angle = vertical ? (lane > 0 ? 0 : Math.PI) : (lane > 0 ? Math.PI / 2 : -Math.PI / 2);
-      const car = new Car(scene, x, z, angle, Math.floor(rng() * 4), pick(rng, CAR_COLORS));
-      car.parked = false;
-      car.speed = CONFIG.TRAFFIC_SPEED * (0.8 + rng() * 0.4);
-      car.vertical = vertical;
-      car.lane = lane;
-      car.road = road;
-      car.along = along;
-      this.cars.push(car);
-    }
+import { CFG, PALETTE, clamp, pick } from './config.js';
+import { makeCar, MODELS } from './vehicles.js';
+
+export function spawnTraffic(g, rng) {
+  const cars = [];
+  for (let i = 0; i < CFG.trafficCars; i++) {
+    const road = pick(rng, g.roadLines);
+    const along = (rng() - 0.5) * (CFG.cityHalf * 2 - 30);
+    const dir = rng() < 0.5 ? 1 : -1;
+    const lane = dir * 2.6;
+    const x = road.axis === 'x' ? along : road.at + lane;
+    const z = road.axis === 'x' ? road.at + lane : along;
+    const angle = road.axis === 'x' ? (dir > 0 ? Math.PI / 2 : -Math.PI / 2) : dir > 0 ? 0 : Math.PI;
+    // NOTE: our car mesh faces +Z when angle is 0, so an x-road car
+    // driving +X needs angle PI/2. The mapping above keeps nose forward.
+    const model = pick(rng, MODELS);
+    const car = makeCar(g, model, pick(rng, PALETTE.car), x, z, angle, { traffic: true });
+    car.speed = 9 + rng() * 7;
+    car.road = road;
+    car.dir = dir;
+    car.lane = lane;
+    cars.push(car);
   }
+  g.trafficCars = cars;
+  return cars;
+}
 
-  update(dt) {
-    for (const car of this.cars) {
-      car.along += car.speed * dt * (car.lane > 0 ? 1 : -1) * (car.vertical ? 1 : 1);
-      // Loop around the city edge.
-      if (car.along > 190) car.along = -190;
-      if (car.along < -190) car.along = 190;
-      if (car.vertical) {
-        car.pos.x = car.road + car.lane;
-        car.pos.z = car.along;
-        car.angle = car.lane > 0 ? 0 : Math.PI;
-      } else {
-        car.pos.x = car.along;
-        car.pos.z = car.road + car.lane;
-        car.angle = car.lane > 0 ? Math.PI / 2 : -Math.PI / 2;
+export function updateTraffic(g, dt) {
+  for (const car of g.trafficCars) {
+    // Slow down if a car is close ahead on the same road.
+    let blocked = false;
+    for (const other of g.cars) {
+      if (other === car || other.parked) continue;
+      const dx = other.pos.x - car.pos.x;
+      const dz = other.pos.z - car.pos.z;
+      const ahead = Math.sin(car.angle) * dx + Math.cos(car.angle) * dz;
+      const side = Math.abs(Math.cos(car.angle) * dx - Math.sin(car.angle) * dz);
+      if (ahead > 0 && ahead < 9 && side < 2.2) {
+        blocked = true;
+        break;
       }
-      car.syncMesh();
     }
+    const target = blocked ? 0 : 9 + (car.id % 5);
+    car.speed += clamp(target - car.speed, -14 * dt, 8 * dt);
+    car.pos.x += Math.sin(car.angle) * car.speed * dt;
+    car.pos.z += Math.cos(car.angle) * car.speed * dt;
+    // Wrap around the far edge of the map.
+    const lim = CFG.cityHalf + 20;
+    if (car.pos.x > lim) car.pos.x = -lim;
+    if (car.pos.x < -lim) car.pos.x = lim;
+    if (car.pos.z > lim) car.pos.z = -lim;
+    if (car.pos.z < -lim) car.pos.z = lim;
+    car.mesh.position.copy(car.pos);
+    car.mesh.rotation.y = car.angle;
   }
-
-  /** All moving cars, for the minimap and for collision checks. */
-  allCars() { return this.cars; }
 }
