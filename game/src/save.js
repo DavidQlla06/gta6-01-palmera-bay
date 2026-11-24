@@ -1,37 +1,47 @@
-// Palmera Bay — save / load.
-// One job: persist cash, jobs completed and the player's position in
-// localStorage, and restore them. Nothing else touches storage.
+// Palmera Bay — save / load through localStorage.
+// Keeps cash, the job number and the player's position, so a run can
+// survive a closed tab. A corrupt or missing save just starts fresh.
+
 const SAVE_KEY = 'palmera-bay-save-v1';
 
-export function saveGame(state) {
+export function loadSave() {
   try {
-    const data = {
-      cash: Math.floor(state.cash),
-      missionsCompleted: state.missions ? state.missions.completed.slice() : [false, false, false, false],
-      missionIndex: state.missions ? state.missions.index : 0,
-      x: state.player.pos.x,
-      z: state.player.pos.z,
-      savedAt: new Date().toISOString(),
-    };
-    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-
-export function loadGame() {
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
+    const raw = window.localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    if (typeof data.cash !== 'number') return null;
-    return data;
+    if (typeof data !== 'object' || data === null) return null;
+    return {
+      cash: typeof data.cash === 'number' ? data.cash : 0,
+      missionIndex: typeof data.missionIndex === 'number' ? data.missionIndex : 0,
+      x: typeof data.x === 'number' ? data.x : 0,
+      z: typeof data.z === 'number' ? data.z : -150,
+    };
   } catch (e) {
     return null;
   }
 }
 
-export function hasSave() {
-  try { return localStorage.getItem(SAVE_KEY) !== null; } catch (e) { return false; }
+export function writeSave(g) {
+  try {
+    window.localStorage.setItem(
+      SAVE_KEY,
+      JSON.stringify({
+        cash: g.cash,
+        missionIndex: g.missionIndex,
+        x: Math.round(g.player.pos.x),
+        z: Math.round(g.player.pos.z),
+        savedAt: Date.now(),
+      }),
+    );
+  } catch (e) {
+    // Private mode / full storage: the game simply plays unsaved.
+  }
+}
+
+export function clearSave() {
+  try {
+    window.localStorage.removeItem(SAVE_KEY);
+  } catch (e) {
+    // Ignore.
+  }
 }
