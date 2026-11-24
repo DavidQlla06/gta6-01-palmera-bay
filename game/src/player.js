@@ -1,110 +1,104 @@
 // Palmera Bay — the player on foot.
-// One job: third-person on-foot movement (WASD relative to camera yaw,
-// mouse-look with pointer lock, Shift to run) and the visible character.
+// A simple stylised figure: torso, head, legs that swing while walking.
+// Movement is camera-relative; the figure turns toward its motion.
+
 import * as THREE from 'three';
-import { CONFIG, clamp } from './config.js';
+import { CFG, clamp } from './config.js';
+import { resolveCollision } from './world.js';
 
-export class Player {
-  constructor(scene, world) {
-    this.world = world;
-    this.pos = new THREE.Vector3(-28, 0, 28);
-    this.yaw = Math.PI * 0.75;   // facing down the avenue
-    this.camYaw = this.yaw;
-    this.camPitch = -0.22;
-    this.speed = 0;
-    this.health = CONFIG.PLAYER_HEALTH_MAX;
-    this.moving = false;
+export function makePlayerMesh(g) {
+  const group = new THREE.Group();
+  const jacket = new THREE.MeshLambertMaterial({ color: 0xd26a2e });
+  const jeans = new THREE.MeshLambertMaterial({ color: 0x2c4a6e });
+  const skin = new THREE.MeshLambertMaterial({ color: 0xc98d5f });
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.78, 0.34), jacket);
+  torso.position.y = 1.18;
+  group.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 10), skin);
+  head.position.y = 1.78;
+  group.add(head);
+  const cap = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 0.1, 0.5),
+    new THREE.MeshLambertMaterial({ color: 0x1c2f4a }),
+  );
+  cap.position.y = 1.98;
+  group.add(cap);
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.8, 0.28), jeans);
+  legL.position.set(-0.17, 0.4, 0);
+  group.add(legL);
+  const legR = legL.clone();
+  legR.position.x = 0.17;
+  group.add(legR);
+  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.66, 0.2), jacket);
+  armL.position.set(-0.42, 1.2, 0);
+  group.add(armL);
+  const armR = armL.clone();
+  armR.position.x = 0.42;
+  group.add(armR);
+  g.scene.add(group);
+  return { mesh: group, legL, legR, armL, armR };
+}
 
-    // Character: simple stylised figure — jacket, head, cap, legs that swing.
-    const g = new THREE.Group();
-    const skin = new THREE.MeshLambertMaterial({ color: 0xc98a5e });
-    const jacket = new THREE.MeshLambertMaterial({ color: 0x2e8f6e });
-    const pants = new THREE.MeshLambertMaterial({ color: 0x2a3550 });
-    const cap = new THREE.MeshLambertMaterial({ color: 0xe85d3d });
-    this.body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.85, 0.4), jacket);
-    this.body.position.y = 1.15;
-    g.add(this.body);
-    this.head = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), skin);
-    this.head.position.y = 1.85;
-    g.add(this.head);
-    const hat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.14, 0.55), cap);
-    hat.position.y = 2.1;
-    g.add(hat);
-    this.legL = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.75, 0.3), pants);
-    this.legL.position.set(-0.18, 0.38, 0);
-    g.add(this.legL);
-    this.legR = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.75, 0.3), pants);
-    this.legR.position.set(0.18, 0.38, 0);
-    g.add(this.legR);
-    this.armL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.7, 0.24), jacket);
-    this.armL.position.set(-0.48, 1.2, 0);
-    g.add(this.armL);
-    this.armR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.7, 0.24), jacket);
-    this.armR.position.set(0.48, 1.2, 0);
-    g.add(this.armR);
-    this.mesh = g;
-    this.mesh.position.copy(this.pos);
-    scene.add(this.mesh);
-    this.walkPhase = 0;
+/** On-foot step. Returns horizontal speed for the HUD and audio. */
+export function movePlayer(g, input, dt) {
+  const p = g.player;
+  const run = input.run ? CFG.runSpeed : CFG.walkSpeed;
+  let mx = 0;
+  let mz = 0;
+  if (input.forward) mz -= 1;
+  if (input.back) mz += 1;
+  if (input.left) mx -= 1;
+  if (input.right) mx += 1;
+  const moving = mx !== 0 || mz !== 0;
+  let speed = 0;
+  if (moving) {
+    const len = Math.hypot(mx, mz);
+    mx /= len;
+    mz /= len;
+    // Camera-relative: forward is where the camera looks. The camera sits
+    // at target + (sin yaw, cos yaw) * dist, so its view direction is
+    // (-sin yaw, -cos yaw); rotate the local input (mx right, mz forward
+    // with W giving mz = -1) by yaw around Y to get world movement.
+    const yaw = g.camYaw;
+    const wx = mx * Math.cos(yaw) + mz * Math.sin(yaw);
+    const wz = -mx * Math.sin(yaw) + mz * Math.cos(yaw);
+    p.pos.x += wx * run * dt;
+    p.pos.z += wz * run * dt;
+    p.pos.x = clamp(p.pos.x, -CFG.cityHalf - 20, CFG.cityHalf + 20);
+    p.pos.z = clamp(p.pos.z, -CFG.cityHalf - 20, CFG.seaZ + 30);
+    resolveCollision(p.pos, 0.55, g.colliders);
+    const targetAngle = Math.atan2(wx, wz);
+    let d = targetAngle - p.angle;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    p.angle += d * Math.min(1, dt * 10);
+    speed = run;
+    p.walkPhase += dt * run * 1.6;
+  } else {
+    p.walkPhase *= 0.9;
   }
+  p.mesh.position.copy(p.pos);
+  p.mesh.rotation.y = p.angle;
+  // Walk cycle: legs and arms swing opposite.
+  const swing = moving ? Math.sin(p.walkPhase) * 0.55 : 0;
+  p.parts.legL.rotation.x = swing;
+  p.parts.legR.rotation.x = -swing;
+  p.parts.armL.rotation.x = -swing * 0.8;
+  p.parts.armR.rotation.x = swing * 0.8;
+  return speed;
+}
 
-  /** Mouse-look deltas (pointer lock). */
-  look(dx, dy) {
-    this.camYaw -= dx * 0.0026;
-    this.camPitch = clamp(this.camPitch - dy * 0.0026, -0.9, 0.55);
-  }
-
-  update(dt, keys) {
-    const run = keys['ShiftLeft'] || keys['ShiftRight'];
-    const target = run ? CONFIG.RUN_SPEED : CONFIG.WALK_SPEED;
-    let fx = 0, fz = 0;
-    if (keys['KeyW']) fz -= 1;
-    if (keys['KeyS']) fz += 1;
-    if (keys['KeyA']) fx -= 1;
-    if (keys['KeyD']) fx += 1;
-    const len = Math.hypot(fx, fz);
-    this.moving = len > 0;
-    if (len > 0) {
-      fx /= len; fz /= len;
-      // Move relative to camera yaw.
-      const sin = Math.sin(this.camYaw), cos = Math.cos(this.camYaw);
-      const mx = fx * cos - fz * sin;
-      const mz = fx * sin + fz * cos;
-      this.speed = target;
-      const nx = this.pos.x + mx * target * dt;
-      const nz = this.pos.z + mz * target * dt;
-      if (!this.world.isBlocked(nx, this.pos.z, CONFIG.PLAYER_RADIUS)) this.pos.x = nx;
-      if (!this.world.isBlocked(this.pos.x, nz, CONFIG.PLAYER_RADIUS)) this.pos.z = nz;
-      this.yaw = Math.atan2(mx, mz);
-      this.walkPhase += dt * target * 1.6;
-    } else {
-      this.speed = 0;
+/** Find the nearest stealable parked car within reach of the player. */
+export function nearestStealableCar(g, maxDist = 3.4) {
+  let best = null;
+  let bestD = maxDist;
+  for (const car of g.cars) {
+    if (!car.parked || car.cop || car.traffic) continue;
+    const d = Math.hypot(car.pos.x - g.player.pos.x, car.pos.z - g.player.pos.z);
+    if (d < bestD) {
+      bestD = d;
+      best = car;
     }
-    // Health slowly regenerates when calm.
-    if (this.health < CONFIG.PLAYER_HEALTH_MAX) this.health = Math.min(CONFIG.PLAYER_HEALTH_MAX, this.health + dt * 2);
-    this.mesh.position.copy(this.pos);
-    this.mesh.rotation.y = this.yaw;
-    const swing = this.moving ? Math.sin(this.walkPhase) * 0.55 : 0;
-    this.legL.rotation.x = swing;
-    this.legR.rotation.x = -swing;
-    this.armL.rotation.x = -swing * 0.8;
-    this.armR.rotation.x = swing * 0.8;
   }
-
-  /** Third-person camera target behind the player. */
-  cameraPosition(out) {
-    const d = CONFIG.CAM_DISTANCE;
-    const h = CONFIG.CAM_HEIGHT - this.camPitch * 6;
-    out.set(
-      this.pos.x - Math.sin(this.camYaw) * d,
-      h,
-      this.pos.z - Math.cos(this.camYaw) * d,
-    );
-    return out;
-  }
-
-  cameraLookAt(out) {
-    out.set(this.pos.x, 1.6, this.pos.z);
-    return out;
-  }
+  return best;
 }
