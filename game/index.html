@@ -5,56 +5,93 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Palmera Bay — Open-World Crime Game</title>
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0c1a22;
-    font-family: "Segoe UI", Verdana, sans-serif; }
-  #app, #app canvas { width: 100%; height: 100%; display: block; }
-  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; color: #fff; }
-  #hud-top-left { position: absolute; top: 14px; left: 16px; }
-  #hud-cash { font-size: 30px; font-weight: 800; color: #37c978;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.7); }
-  #hud-health { width: 170px; height: 14px; margin-top: 6px; background: rgba(0,0,0,0.55);
-    border: 1px solid rgba(255,255,255,0.4); border-radius: 3px; position: relative; }
-  #hud-health-fill { height: 100%; width: 100%; background: #37c978; border-radius: 2px; }
-  #hud-health span { position: absolute; right: 4px; top: -1px; font-size: 9px; letter-spacing: 1px; }
-  #hud-stars { font-size: 26px; margin-top: 4px; letter-spacing: 3px; }
-  #hud-mission { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-    max-width: 560px; text-align: center; font-size: 15px; font-weight: 600;
-    background: rgba(0,0,0,0.55); padding: 8px 16px; border-radius: 6px;
-    border-left: 4px solid #ffc23c; }
-  #hud-speed { position: absolute; bottom: 18px; right: 250px; font-size: 22px; font-weight: 700;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
-  #hud-toast { position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
-    font-size: 17px; font-weight: 600; background: rgba(0,0,0,0.65); padding: 8px 18px;
-    border-radius: 6px; opacity: 0; transition: opacity 0.4s; white-space: nowrap; }
-  #minimap { position: absolute; bottom: 14px; right: 14px; width: 220px; height: 220px;
-    border: 2px solid rgba(255,255,255,0.55); border-radius: 8px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
-  #hud-help { position: absolute; bottom: 14px; left: 16px; font-size: 12px; color: rgba(255,255,255,0.75);
-    text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
-  .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; text-align: center; background: rgba(8, 20, 28, 0.72);
-    pointer-events: auto; padding: 20px; }
-  .overlay.hidden { display: none; }
-  .overlay h1 { font-size: 64px; margin: 0; letter-spacing: 6px; color: #ffc23c;
-    text-shadow: 0 4px 0 #b3541e, 0 8px 24px rgba(0,0,0,0.6); }
-  .overlay .tagline { font-size: 18px; color: #ffe9b0; margin: 10px 0 4px; }
-  .overlay .story { max-width: 560px; font-size: 15px; line-height: 1.5; color: #e8e8e8; }
-  .overlay button { pointer-events: auto; cursor: pointer; margin-top: 14px; font-size: 18px;
-    font-weight: 700; letter-spacing: 1px; color: #10202a; background: #ffc23c;
-    border: none; border-radius: 6px; padding: 12px 34px; box-shadow: 0 4px 0 #b3541e; }
-  .overlay button:hover { background: #ffd45e; }
-  .overlay button:active { transform: translateY(3px); box-shadow: 0 1px 0 #b3541e; }
-  .overlay .controls { margin-top: 22px; font-size: 13px; color: rgba(255,255,255,0.8); line-height: 1.7; }
-  #fatal-error { position: fixed; top: 10px; left: 10px; z-index: 99; color: #fff;
-    background: #a02020; padding: 10px 14px; border-radius: 6px; font-size: 14px; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0c1420; font-family: 'Segoe UI', Arial, sans-serif; }
+  #game, #game canvas { width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; z-index: 5; }
+  #hud.dim { opacity: 0.35; }
+  .panel { position: absolute; background: rgba(8, 18, 30, 0.62); border-radius: 10px; padding: 10px 14px; }
+  #stats { top: 14px; left: 14px; }
+  #cash { font-size: 26px; font-weight: 800; color: #7be495; text-shadow: 0 2px 4px #000; }
+  #health-bar { width: 170px; height: 10px; background: rgba(255,255,255,0.25); border-radius: 5px; margin-top: 6px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #58c96b; }
+  #stars { top: 14px; right: 14px; font-size: 26px; letter-spacing: 4px; color: #ffd76a; text-shadow: 0 2px 6px #000; }
+  #stars.hot { color: #ff5a4e; animation: pulse 0.8s infinite alternate; }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+  #objective { top: 64px; left: 50%; transform: translateX(-50%); max-width: 640px; text-align: center; font-size: 15px; font-weight: 600; color: #ffe9a8; }
+  #speed { bottom: 16px; right: 16px; font-size: 22px; font-weight: 800; }
+  #minimap { position: absolute; bottom: 16px; left: 16px; width: 168px; height: 168px; border: 2px solid rgba(255,255,255,0.55); border-radius: 8px; background: #20262c; }
+  #controls-hint { position: absolute; bottom: 16px; left: 200px; font-size: 12px; color: rgba(255,255,255,0.85); background: rgba(8,18,30,0.5); padding: 6px 10px; border-radius: 8px; }
+  #toast { position: absolute; top: 120px; left: 50%; transform: translateX(-50%); background: rgba(8,18,30,0.8); border: 1px solid #ffd76a; color: #ffe9a8; padding: 10px 18px; border-radius: 10px; font-size: 16px; font-weight: 700; opacity: 0; transition: opacity 0.3s; }
+  #toast.show { opacity: 1; }
+  .menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 10; background: linear-gradient(160deg, rgba(10,30,52,0.82), rgba(20,60,90,0.72)); }
+  .menu.hidden { display: none; }
+  .hidden { display: none !important; }
+  .menu-card { text-align: center; color: #fff; max-width: 620px; padding: 36px 44px; background: rgba(6,16,28,0.72); border: 1px solid rgba(255,215,106,0.5); border-radius: 18px; }
+  .menu-card h1 { margin: 0 0 6px; font-size: 52px; letter-spacing: 2px; color: #ffd76a; text-shadow: 0 4px 14px #000; }
+  .menu-card h2 { margin: 0 0 14px; font-size: 30px; color: #ffd76a; }
+  .menu-card p { font-size: 16px; line-height: 1.55; color: #dfeefc; }
+  .menu-card .keys { font-size: 13px; color: #b9d4ea; }
+  button { pointer-events: auto; cursor: pointer; margin: 8px 6px 0; padding: 12px 26px; font-size: 17px; font-weight: 800; color: #123a5c; background: #ffd76a; border: none; border-radius: 10px; }
+  button:hover { background: #ffe08a; }
+  button.secondary { background: #dcebf5; color: #123a5c; }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<div id="app"></div>
-<div id="hud"></div>
+<div id="game"></div>
+<div id="hud">
+  <div class="panel" id="stats">
+    <div id="cash">$0</div>
+    <div id="health-bar"><div id="health-fill"></div></div>
+  </div>
+  <div class="panel" id="stars">☆☆☆☆☆</div>
+  <div class="panel" id="objective">Welcome to Palmera Bay.</div>
+  <div class="panel" id="speed">0 km/h</div>
+  <canvas id="minimap" width="168" height="168"></canvas>
+  <div id="controls-hint">WASD move / drive · Mouse look · E steal car · F punch · Shift run · P pause · M mute</div>
+  <div id="toast"></div>
+</div>
+
+<div class="menu" id="menu-start">
+  <div class="menu-card">
+    <h1>PALMERA BAY</h1>
+    <p>You are <b>Leo Marlow</b>, a driver fresh off the ferry. Rosa the fixer
+    has four jobs for you — steal cars, outrun the Palmera Bay police, and
+    deliver. The city, the cars, the story and the music are all original.</p>
+    <p class="keys">WASD move / drive &nbsp;·&nbsp; Mouse look (click to lock) &nbsp;·&nbsp; E enter / steal a car &nbsp;·&nbsp; F or Click punch &nbsp;·&nbsp; Shift run &nbsp;·&nbsp; P pause &nbsp;·&nbsp; M mute</p>
+    <button id="btn-new">New Game</button>
+    <button id="btn-continue" class="secondary">Continue</button>
+  </div>
+</div>
+
+<div class="menu hidden" id="menu-pause">
+  <div class="menu-card">
+    <h2>Paused</h2>
+    <p>Take a breath. The bay will wait.</p>
+    <button id="btn-resume">Resume</button>
+    <button id="btn-menu" class="secondary">Main Menu</button>
+  </div>
+</div>
+
+<div class="menu hidden" id="menu-busted">
+  <div class="menu-card">
+    <h2>BUSTED</h2>
+    <p>The Palmera Bay police finally caught up with you. Rosa is already
+    working on your bail — but the jobs are still waiting.</p>
+    <button id="btn-restart">Try Again</button>
+  </div>
+</div>
+
+<div class="menu hidden" id="menu-complete">
+  <div class="menu-card">
+    <h2>YOU OWN THE BAY</h2>
+    <p id="complete-stats"></p>
+    <button id="btn-again">Play Again</button>
+  </div>
+</div>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
