@@ -1,150 +1,196 @@
 // Palmera Bay — story missions.
-// One job: the four story jobs, their objective text, the 3D beacon and
-// minimap blip, completion checks and cash rewards. The HUD reads the
-// current objective from here; main.js applies the rewards.
+// Four jobs from Rosa, the fixer who runs the bay's back rooms. They run
+// in order; finishing one starts the next. Each job has a 3D beacon, a
+// minimap blip and a HUD objective line, and pays cash on completion.
+
 import * as THREE from 'three';
-import { CONFIG } from './config.js';
+import { CFG } from './config.js';
 
-export const MISSIONS = [
+export const MISSION_DEFS = [
   {
-    id: 1,
-    title: 'Hot Wheels',
-    giver: 'Rosa at the marina',
-    text: 'Steal any parked car and deliver it to the marina drop-off.',
-    reward: CONFIG.MISSION_REWARDS[0],
+    id: 'hot-wheels',
+    name: 'JOB 1: HOT WHEELS',
+    giver: 'Rosa',
+    brief: 'Steal the red Comet parked on Coral Ave and deliver it to the marina.',
+    payout: CFG.payouts[0],
   },
   {
-    id: 2,
-    title: 'Bay Run',
-    giver: 'Rosa at the marina',
-    text: 'Drive to the downtown tower before the timer runs out.',
-    reward: CONFIG.MISSION_REWARDS[1],
+    id: 'crosstown',
+    name: 'JOB 2: CROSSTOWN DASH',
+    giver: 'Rosa',
+    brief: 'Drive to the beach checkpoint before the timer runs out. 75 seconds.',
+    payout: CFG.payouts[1],
   },
   {
-    id: 3,
-    title: 'Heat Wave',
-    giver: 'Marco on the boardwalk',
-    text: 'The cops are onto you. Lose the 3-star wanted level.',
-    reward: CONFIG.MISSION_REWARDS[2],
+    id: 'lose-heat',
+    name: 'JOB 3: LOSE THE HEAT',
+    giver: 'Marco',
+    brief: 'The cops are onto you. Lose the 3-star wanted level to finish the job.',
+    payout: CFG.payouts[2],
   },
   {
-    id: 4,
-    title: 'Last Package',
-    giver: 'Marco on the boardwalk',
-    text: 'Deliver the package to the beach house on the east shore.',
-    reward: CONFIG.MISSION_REWARDS[3],
+    id: 'bay-runner',
+    name: 'JOB 4: BAY RUNNER',
+    giver: 'Rosa',
+    brief: 'Pick up the package at the docks, then deliver it to the downtown tower.',
+    payout: CFG.payouts[3],
   },
 ];
 
-// Drop-off points: marina beach, downtown tower, boardwalk, beach house.
-// All targets sit on walkable ground (x <= 210, the beach wall).
-const TARGETS = [
-  new THREE.Vector3(204, 0, -140),
-  new THREE.Vector3(28, 0, 28),
-  new THREE.Vector3(200, 0, 40),
-  new THREE.Vector3(200, 0, 120),
-];
+function makeBeacon(g) {
+  const group = new THREE.Group();
+  const pillar = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.6, 2.4, 60, 12, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0xffd76a,
+      transparent: true,
+      opacity: 0.28,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    }),
+  );
+  pillar.position.y = 30;
+  group.add(pillar);
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(2.4, 0.28, 8, 24),
+    new THREE.MeshBasicMaterial({ color: 0xffd76a }),
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.3;
+  group.add(ring);
+  const light = new THREE.PointLight(0xffd76a, 30, 40);
+  light.position.y = 4;
+  group.add(light);
+  group.visible = false;
+  g.scene.add(group);
+  return group;
+}
 
-export class MissionManager {
-  constructor(scene) {
-    this.scene = scene;
-    this.index = 0;             // current mission (0..3), 4 = all done
-    this.active = false;
-    this.timer = 0;
-    this.completed = [false, false, false, false];
-    this.message = '';
-    // 3D beacon: a glowing pillar of light at the target.
-    const geo = new THREE.CylinderGeometry(2.2, 2.2, 40, 16, 1, true);
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0xffc23c, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false,
-    });
-    this.beacon = new THREE.Mesh(geo, mat);
-    this.beacon.visible = false;
-    scene.add(this.beacon);
-    const ringGeo = new THREE.RingGeometry(4, 6, 24);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffc23c, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
-    this.ring = new THREE.Mesh(ringGeo, ringMat);
-    this.ring.rotation.x = -Math.PI / 2;
-    this.ring.visible = false;
-    scene.add(this.ring);
-  }
+export function initMissions(g) {
+  g.missionIndex = 0;
+  g.mission = null;
+  g.beacon = makeBeacon(g);
+  g.beaconTarget = null;
+  return g;
+}
 
-  current() { return this.index < MISSIONS.length ? MISSIONS[this.index] : null; }
-  target() { return this.index < TARGETS.length ? TARGETS[this.index] : null; }
-  isDone() { return this.index >= MISSIONS.length; }
+function setBeacon(g, x, z) {
+  g.beacon.visible = true;
+  g.beacon.position.set(x, 0, z);
+  g.beaconTarget = new THREE.Vector3(x, 0, z);
+}
 
-  start(index) {
-    this.index = index;
-    this.active = true;
-    const t = this.target();
-    if (t) {
-      this.beacon.position.set(t.x, 20, t.z);
-      this.beacon.visible = true;
-      this.ring.position.set(t.x, 0.3, t.z);
-      this.ring.visible = true;
+function hideBeacon(g) {
+  g.beacon.visible = false;
+  g.beaconTarget = null;
+}
+
+/** The Comet the first job wants stolen: a red car parked on Coral Ave.
+ *  Cached on the game object at boot, because once the player steals it
+ *  it is no longer parked and a fresh search would come up empty. */
+function jobCar(g) {
+  if (g.jobCar) return g.jobCar;
+  for (const car of g.cars) {
+    if (car.model.name === 'Comet' && car.color === 0xd23b2e) {
+      g.jobCar = car;
+      return car;
     }
-    if (this.index === 1) this.timer = CONFIG.TIMED_MISSION_SECONDS;
-    if (this.index === 2) this.timer = 0;
-    this.message = '';
   }
+  return null;
+}
 
-  stop() {
-    this.active = false;
-    this.beacon.visible = false;
-    this.ring.visible = false;
+export function startMission(g, index) {
+  const def = MISSION_DEFS[index];
+  if (!def) {
+    g.completeGame();
+    return;
   }
-
-  /** Objective line for the HUD. */
-  objectiveText() {
-    const m = this.current();
-    if (!m) return 'All jobs done — Palmera Bay is yours. Free roam!';
-    let line = `Job ${m.id}: ${m.title} — ${m.text}`;
-    if (this.index === 1 && this.active) line += ` (${Math.max(0, Math.ceil(this.timer))}s left)`;
-    if (this.index === 2 && this.active) line += ' (stay hidden until the heat drops)';
-    return line;
+  g.missionIndex = index;
+  g.mission = { def, stage: 0, timer: 0, target: null };
+  g.hud.setObjective(`${def.name} — ${def.brief}`);
+  g.hud.toast(`${def.name} · ${def.giver}: ${def.brief}`, 6);
+  if (index === 0) {
+    const car = jobCar(g);
+    if (car) {
+      g.mission.target = car;
+      setBeacon(g, car.pos.x, car.pos.z);
+    }
+  } else if (index === 1) {
+    g.mission.timer = 75;
+    setBeacon(g, 0, 210);
+  } else if (index === 2) {
+    g.mission.timer = 0;
+    // Raise the heat directly (a police module import here would cycle).
+    g.wanted = 3;
+    g.heatTimer = CFG.wantedDecaySeconds;
+    hideBeacon(g);
+  } else if (index === 3) {
+    g.mission.stage = 0;
+    setBeacon(g, 226, -60);
   }
+}
 
-  /**
-   * Check completion each frame. Returns { done, failed, reward } or null.
-   * ctx: { playerPos, inCar, wanted, dt }
-   */
-  update(dt, ctx) {
-    if (!this.active || this.isDone()) return null;
-    const t = this.target();
-    const dist = Math.hypot(ctx.playerPos.x - t.x, ctx.playerPos.z - t.z);
-    if (this.index === 1) {
-      this.timer -= dt;
-      if (this.timer <= 0) {
-        this.stop();
-        this.message = 'Too slow — the buyer walked away. Try again from the menu.';
-        return { done: false, failed: true, reward: 0 };
+function completeMission(g) {
+  const m = g.mission;
+  g.cash += m.def.payout;
+  g.audio.jingle();
+  g.audio.pickup();
+  g.hud.toast(`${m.def.name} COMPLETE — +$${m.def.payout}`, 5);
+  hideBeacon(g);
+  g.mission = null;
+  g.saveGame();
+  if (g.missionIndex + 1 >= MISSION_DEFS.length) {
+    g.completeGame();
+  } else {
+    setTimeout(() => startMission(g, g.missionIndex + 1), 1200);
+  }
+}
+
+export function updateMissions(g, dt) {
+  const m = g.mission;
+  if (!m || g.mode !== 'playing') return;
+  const pp = g.inCar ? g.inCar.pos : g.player.pos;
+  if (m.def.id === 'hot-wheels') {
+    if (m.stage === 0) {
+      const car = jobCar(g);
+      if (car && g.inCar === car) {
+        m.stage = 1;
+        setBeacon(g, 226, -60);
+        g.hud.setObjective('JOB 1: HOT WHEELS — deliver the Comet to the marina docks.');
+        g.hud.toast('Got it. Now take it to the marina — east docks.', 4);
       }
+    } else if (pp.distanceTo(new THREE.Vector3(226, 0, -60)) < 9 && g.inCar) {
+      completeMission(g);
     }
-    if (this.index === 0) {
-      // Mission 1 needs the player IN a car at the drop-off.
-      if (dist < CONFIG.MISSION_RADIUS && ctx.inCar) return this.complete();
-    } else if (this.index === 1) {
-      if (dist < CONFIG.MISSION_RADIUS) return this.complete();
-    } else if (this.index === 2) {
-      // Mission 3 completes when the wanted level hits zero.
-      if (ctx.wanted === 0) return this.complete();
-    } else if (this.index === 3) {
-      if (dist < CONFIG.MISSION_RADIUS) return this.complete();
+  } else if (m.def.id === 'crosstown') {
+    m.timer -= dt;
+    g.hud.setObjective(`JOB 2: CROSSTOWN DASH — reach the beach checkpoint! ${Math.max(0, Math.ceil(m.timer))}s left`);
+    if (pp.distanceTo(new THREE.Vector3(0, 0, 210)) < 10) {
+      completeMission(g);
+    } else if (m.timer <= 0) {
+      g.hud.toast('Too slow! The dash is still open — try again.', 4);
+      m.timer = 75;
+      setBeacon(g, 0, 210);
     }
-    return null;
+  } else if (m.def.id === 'lose-heat') {
+    g.hud.setObjective(`JOB 3: LOSE THE HEAT — wanted ★${'★'.repeat(g.wanted)}${'☆'.repeat(5 - g.wanted)} — stay clean until it fades.`);
+    if (g.wanted === 0) completeMission(g);
+  } else if (m.def.id === 'bay-runner') {
+    if (m.stage === 0) {
+      if (pp.distanceTo(new THREE.Vector3(226, 0, -60)) < 8) {
+        m.stage = 1;
+        g.audio.pickup();
+        setBeacon(g, 0, 0);
+        g.hud.setObjective('JOB 4: BAY RUNNER — package collected! Deliver it to the downtown tower.');
+        g.hud.toast('Package secured. Downtown tower, go!', 4);
+      }
+    } else if (pp.distanceTo(new THREE.Vector3(0, 0, 0)) < 9) {
+      completeMission(g);
+    }
   }
-
-  complete() {
-    const m = this.current();
-    this.completed[this.index] = true;
-    this.index += 1;
-    this.stop();
-    const reward = m.reward;
-    this.message = `Job complete: ${m.title} — +$${reward}`;
-    if (!this.isDone()) {
-      // Queue the next job; main.js starts it after a short beat.
-      this.pendingNext = true;
-    }
-    return { done: true, failed: false, reward };
+  // Beacon pulse.
+  if (g.beacon.visible) {
+    const s = 1 + Math.sin(g.time * 3) * 0.12;
+    g.beacon.scale.set(s, 1, s);
   }
 }
